@@ -49,6 +49,7 @@ import org.apache.kafka.common.requests.FetchResponse;
 import org.apache.kafka.common.requests.FetchResponse.PartitionData;
 import org.apache.kafka.common.requests.FindCoordinatorResponse;
 import org.apache.kafka.common.requests.HeartbeatResponse;
+import org.apache.kafka.common.requests.IsolationLevel;
 import org.apache.kafka.common.requests.JoinGroupRequest;
 import org.apache.kafka.common.requests.JoinGroupResponse;
 import org.apache.kafka.common.requests.LeaveGroupResponse;
@@ -1151,8 +1152,10 @@ public class KafkaConsumerTest {
         assertEquals(0, consumer.committed(tp1).offset());
 
         // fetch and verify consumer's position in the two partitions
-        client.prepareResponse(listOffsetsResponse(Collections.singletonMap(tp0, 3L), Errors.NONE));
-        client.prepareResponse(listOffsetsResponse(Collections.singletonMap(tp1, 3L), Errors.NONE));
+        final Map<TopicPartition, Long> offsetResponse = new HashMap<>();
+        offsetResponse.put(tp0, 3L);
+        offsetResponse.put(tp1, 3L);
+        client.prepareResponse(listOffsetsResponse(offsetResponse, Errors.NONE));
         assertEquals(3L, consumer.position(tp0));
         assertEquals(3L, consumer.position(tp1));
 
@@ -1546,7 +1549,8 @@ public class KafkaConsumerTest {
                 metrics,
                 metricGroupPrefix,
                 time,
-                retryBackoffMs);
+                retryBackoffMs,
+                IsolationLevel.READ_UNCOMMITTED);
 
         return new KafkaConsumer<>(
                 clientId,
@@ -1561,7 +1565,8 @@ public class KafkaConsumerTest {
                 subscriptions,
                 metadata,
                 retryBackoffMs,
-                requestTimeoutMs);
+                requestTimeoutMs
+        );
     }
 
     private static class FetchInfo {

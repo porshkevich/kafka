@@ -117,23 +117,10 @@ public class MemoryRecordsBuilder {
             throw new IllegalArgumentException("TimestampType must be set for magic >= 0");
 
         if (isTransactional) {
-            if (producerId == RecordBatch.NO_PRODUCER_ID)
-                throw new IllegalArgumentException("Cannot write transactional messages without a valid producer ID");
-
             if (magic < RecordBatch.MAGIC_VALUE_V2)
                 throw new IllegalArgumentException("Transactional messages are not supported for magic " + magic);
         }
 
-        if (producerId != RecordBatch.NO_PRODUCER_ID) {
-            if (producerEpoch < 0)
-                throw new IllegalArgumentException("Invalid negative producer epoch");
-
-            if (baseSequence < 0)
-                 throw new IllegalArgumentException("Invalid negative sequence number used");
-
-            if (magic < RecordBatch.MAGIC_VALUE_V2)
-                throw new IllegalArgumentException("Idempotent messages are not supported for magic " + magic);
-        }
 
         this.magic = magic;
         this.timestampType = timestampType;
@@ -234,6 +221,12 @@ public class MemoryRecordsBuilder {
         this.baseSequence = baseSequence;
     }
 
+    public void overrideLastOffset(long lastOffset) {
+        if (builtRecords != null)
+            throw new IllegalStateException("Cannot override the last offset after the records have been built");
+        this.lastOffset = lastOffset;
+    }
+
     /**
      * Release resources required for record appends (e.g. compression buffers). Once this method is called, it's only
      * possible to update the RecordBatch header.
@@ -252,6 +245,20 @@ public class MemoryRecordsBuilder {
     public void close() {
         if (builtRecords != null)
             return;
+
+        if (isTransactional && producerId == RecordBatch.NO_PRODUCER_ID)
+            throw new IllegalArgumentException("Cannot write transactional messages without a valid producer ID");
+
+        if (producerId != RecordBatch.NO_PRODUCER_ID) {
+            if (producerEpoch == RecordBatch.NO_PRODUCER_EPOCH)
+                throw new IllegalArgumentException("Invalid negative producer epoch");
+
+            if (baseSequence == RecordBatch.NO_SEQUENCE)
+                throw new IllegalArgumentException("Invalid negative sequence number used");
+
+            if (magic < RecordBatch.MAGIC_VALUE_V2)
+                throw new IllegalArgumentException("Idempotent messages are not supported for magic " + magic);
+        }
 
         closeForRecordAppends();
 
@@ -652,5 +659,9 @@ public class MemoryRecordsBuilder {
      */
     public long producerId() {
         return this.producerId;
+    }
+
+    public short producerEpoch() {
+        return this.producerEpoch;
     }
 }

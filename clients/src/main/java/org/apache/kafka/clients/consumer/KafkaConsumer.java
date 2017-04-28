@@ -43,6 +43,7 @@ import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.MetricsReporter;
 import org.apache.kafka.common.network.ChannelBuilder;
 import org.apache.kafka.common.network.Selector;
+import org.apache.kafka.common.requests.IsolationLevel;
 import org.apache.kafka.common.requests.MetadataRequest;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.utils.AppInfoParser;
@@ -660,6 +661,10 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             this.metadata.update(Cluster.bootstrap(addresses), Collections.<String>emptySet(), 0);
             String metricGrpPrefix = "consumer";
             ChannelBuilder channelBuilder = ClientUtils.createChannelBuilder(config);
+
+            IsolationLevel isolationLevel = IsolationLevel.valueOf(
+                    config.getString(ConsumerConfig.ISOLATION_LEVEL_CONFIG).toUpperCase(Locale.ROOT));
+
             NetworkClient netClient = new NetworkClient(
                     new Selector(config.getLong(ConsumerConfig.CONNECTIONS_MAX_IDLE_MS_CONFIG), metrics, time, metricGrpPrefix, channelBuilder),
                     this.metadata,
@@ -710,7 +715,8 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     metrics,
                     metricGrpPrefix,
                     this.time,
-                    this.retryBackoffMs);
+                    this.retryBackoffMs,
+                    isolationLevel);
 
             config.logUnused();
             AppInfoParser.registerAppInfo(JMX_PREFIX, clientId);
@@ -1269,7 +1275,8 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                 throw new IllegalArgumentException("You can only check the position for partitions assigned to this consumer.");
             Long offset = this.subscriptions.position(partition);
             if (offset == null) {
-                updateFetchPositions(Collections.singleton(partition));
+                // batch update fetch positions for any partitions without a valid position
+                updateFetchPositions(subscriptions.assignedPartitions());
                 offset = this.subscriptions.position(partition);
             }
             return offset;

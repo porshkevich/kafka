@@ -76,7 +76,14 @@ private[kafka] object LogValidator extends Logging {
                              timestampDiffMaxMs: Long, compactedTopic: Boolean): Unit = {
     if (!record.hasMagic(batch.magic))
       throw new InvalidRecordException(s"Log record magic does not match outer magic ${batch.magic}")
-    record.ensureValid()
+
+    // verify the record-level CRC only if this is one of the deep entries of a compressed message
+    // set for magic v0 and v1. For non-compressed messages, there is no inner record for magic v0 and v1,
+    // so we depend on the batch-level CRC check in Log.analyzeAndValidateRecords(). For magic v2 and above,
+    // there is no record-level CRC to check.
+    if (batch.magic <= RecordBatch.MAGIC_VALUE_V1 && batch.isCompressed)
+      record.ensureValid()
+
     ensureNotControlRecord(record)
     validateKey(record, compactedTopic)
     validateTimestamp(batch, record, now, timestampType, timestampDiffMaxMs)
@@ -100,7 +107,7 @@ private[kafka] object LogValidator extends Logging {
 
     val newBuffer = ByteBuffer.allocate(sizeInBytesAfterConversion)
     val builder = MemoryRecords.builder(newBuffer, toMagicValue, CompressionType.NONE, timestampType,
-      offsetCounter.value, now, pid, epoch, sequence, partitionLeaderEpoch)
+      offsetCounter.value, now, pid, epoch, sequence, false, partitionLeaderEpoch)
 
     for (batch <- records.batches.asScala) {
       validateBatch(batch)
@@ -274,7 +281,7 @@ private[kafka] object LogValidator extends Logging {
     val estimatedSize = AbstractRecords.estimateSizeInBytes(magic, offsetCounter.value, compressionType, validatedRecords.asJava)
     val buffer = ByteBuffer.allocate(estimatedSize)
     val builder = MemoryRecords.builder(buffer, magic, compressionType, timestampType, offsetCounter.value,
-      logAppendTime, producerId, epoch, baseSequence, partitionLeaderEpoch)
+      logAppendTime, producerId, epoch, baseSequence, false, partitionLeaderEpoch)
 
     validatedRecords.foreach { record =>
       builder.appendWithOffset(offsetCounter.getAndIncrement(), record)
